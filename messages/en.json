@@ -1,0 +1,14 @@
+{
+	"$schema": "https://inlang.com/schema/inlang-message-format",
+	"hello_world": "Hello, {name} from en!",
+
+	"signup_title": "Create your account",
+	"signup_name_label": "Display Name",
+	"signup_name_desc": "How people see you",
+	"signup_email_label": "Email",
+	"signup_email_desc": "How can we contact you",
+  "signup_button": "Signup",
+
+  "signin_title": "Login to your account",
+  "signin_button": "Signin"
+}

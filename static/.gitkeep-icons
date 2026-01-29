@@ -1,0 +1,15 @@
+# PWA Icons Needed
+
+Please add the following icon files to the static directory:
+
+- icon-192.png (192x192 pixels)
+- icon-512.png (512x512 pixels)
+- icon-maskable-192.png (192x192 pixels with safe zone)
+- icon-maskable-512.png (512x512 pixels with safe zone)
+
+You can generate these icons using tools like:
+- https://maskable.app/ (for maskable icons)
+- https://realfavicongenerator.net/
+- https://www.pwabuilder.com/imageGenerator
+
+For maskable icons, ensure important content stays within the safe zone (80% of the canvas).
