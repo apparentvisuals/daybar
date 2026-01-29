@@ -70,6 +70,7 @@
     "workbox-window": "^7.4.0"
   },
   "dependencies": {
+    "@sveltejs/adapter-static": "^3.0.10",
     "mode-watcher": "^1.1.0"
   }
 }
