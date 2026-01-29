@@ -667,11 +667,6 @@
     opacity: 0.7;
   }
 
-  .item-actions {
-    display: flex;
-    gap: 0.5rem;
-  }
-
   .busy-item.editing {
     background: rgba(99, 102, 241, 0.15);
     border-color: rgba(99, 102, 241, 0.4);
