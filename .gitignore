@@ -29,3 +29,6 @@ project.inlang/cache/
 
 *storybook.log
 storybook-static
+
+# Tauri
+src-tauri/target
