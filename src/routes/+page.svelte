@@ -10,8 +10,8 @@
     return { hour: now.getHours(), minute: now.getMinutes() };
   }
 
-  function toggleCompleted(index: number) {
-    configStore.toggleBusyPeriodCompleted(index, getCurrentTime());
+  async function toggleCompleted(index: number) {
+    await configStore.toggleBusyPeriodCompleted(index, getCurrentTime());
   }
 
   function isCompleted(index: number): boolean {
@@ -36,7 +36,11 @@
 </script>
 
 <main>
-  {#if configStore.todayConfig.enabled}
+  {#if !configStore.ready}
+    <div class="loading-message">
+      <p>Loading...</p>
+    </div>
+  {:else if configStore.todayConfig.enabled}
     <DayBar
       startTime={configStore.todayConfig.useCustomRange ? configStore.todayConfig.startTime : { hour: 0, minute: 0 }}
       endTime={configStore.todayConfig.useCustomRange ? configStore.todayConfig.endTime : { hour: 24, minute: 0 }}
@@ -99,7 +103,8 @@
     box-sizing: border-box;
   }
 
-  .disabled-message {
+  .disabled-message,
+  .loading-message {
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(10px);
     border-radius: 12px;
@@ -108,7 +113,8 @@
     text-align: center;
   }
 
-  .disabled-message p {
+  .disabled-message p,
+  .loading-message p {
     margin: 0;
     color: #a0a0a0;
     font-size: 1.25rem;

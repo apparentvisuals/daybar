@@ -54,7 +54,7 @@
     editingIndex = null;
   }
 
-  function saveEditing() {
+  async function saveEditing() {
     if (editingIndex === null) return;
 
     const title = editTitle.trim() || undefined;
@@ -82,27 +82,27 @@
       };
     }
 
-    configStore.updateBusyPeriod(editingIndex, updatedPeriod);
+    await configStore.updateBusyPeriod(editingIndex, updatedPeriod);
     editingIndex = null;
   }
 
-  function addBusyPeriod() {
+  async function addBusyPeriod() {
     const title = newBusyTitle.trim() || undefined;
     if (useFloating) {
-      configStore.addBusyPeriod({
+      await configStore.addBusyPeriod({
         title,
         duration: { ...newBusyDuration },
         floating: true,
       });
     } else if (useDuration) {
-      configStore.addBusyPeriod({
+      await configStore.addBusyPeriod({
         title,
         start: { ...newBusyStart },
         duration: { ...newBusyDuration },
         color: newBusyColor,
       });
     } else {
-      configStore.addBusyPeriod({
+      await configStore.addBusyPeriod({
         title,
         start: { ...newBusyStart },
         end: { ...newBusyEnd },
@@ -113,8 +113,8 @@
     newBusyColor = DEFAULT_COLOR;
   }
 
-  function removeBusyPeriod(index: number) {
-    configStore.removeBusyPeriod(index);
+  async function removeBusyPeriod(index: number) {
+    await configStore.removeBusyPeriod(index);
   }
 
   function isCompleted(index: number): boolean {
@@ -157,310 +157,316 @@
   <Button href={resolve('/')} variant="link">← Back to Timeline</Button>
   <h1 class="text-foreground">Configuration</h1>
 
-  <Card.Root>
-    <Card.Header>
-      <Card.Title>Day of Week</Card.Title>
-      <Card.Action>
-        <input
-          id="day-enabled"
-          type="checkbox"
-          checked={configStore.currentDayConfig.enabled}
-          onchange={(e) => configStore.setEnabled(e.currentTarget.checked)}
-        />
-        <label for="day-enabled">Day enabled</label>
-      </Card.Action>
-    </Card.Header>
-    <Card.Content>
-      <div class="day-selector">
-        {#each DAYS_OF_WEEK as day, index (day)}
-          <Button
-            class="day-btn"
-            variant={configStore.selectedDay === day
-              ? 'default'
-              : index === getCurrentDayIndex()
-                ? 'secondary'
-                : 'ghost'}
-            onclick={() => selectDay(day)}
-          >
-            {DAY_LABELS[day]}
-          </Button>
-        {/each}
-      </div>
-    </Card.Content>
-  </Card.Root>
-
-  {#if configStore.currentDayConfig.enabled}
+  {#if !configStore.ready}
+    <div class="loading-message">
+      <p>Loading...</p>
+    </div>
+  {:else}
     <Card.Root>
       <Card.Header>
+        <Card.Title>Day of Week</Card.Title>
         <Card.Action>
-          <label class="toggle">
-            <input
-              type="checkbox"
-              checked={configStore.currentDayConfig.useCustomRange}
-              onchange={(e) => configStore.setUseCustomRange(e.currentTarget.checked)}
-            />
-            <span>Use custom time range</span>
-          </label>
+          <input
+            id="day-enabled"
+            type="checkbox"
+            checked={configStore.currentDayConfig.enabled}
+            onchange={(e) => configStore.setEnabled(e.currentTarget.checked)}
+          />
+          <label for="day-enabled">Day enabled</label>
         </Card.Action>
       </Card.Header>
       <Card.Content>
-        {#if configStore.currentDayConfig.useCustomRange}
-          <div class="time-inputs">
-            <label>
-              Start:
-              <Input
-                type="time"
-                value={formatTime(configStore.currentDayConfig.startTime)}
-                onchange={(e) => {
-                  const [h, m] = e.currentTarget.value.split(':').map(Number);
-                  configStore.setStartTime({ hour: h, minute: m });
-                }}
-              />
-            </label>
-            <label>
-              End:
-              <Input
-                type="time"
-                value={formatTime(configStore.currentDayConfig.endTime)}
-                onchange={(e) => {
-                  const [h, m] = e.currentTarget.value.split(':').map(Number);
-                  configStore.setEndTime({ hour: h, minute: m });
-                }}
-              />
-            </label>
-          </div>
-        {/if}
-      </Card.Content>
-    </Card.Root>
-  {/if}
-
-  {#if configStore.currentDayConfig.enabled}
-    <Card.Root>
-      <Card.Header><Card.Title>Busy Periods for {DAY_LABELS[configStore.selectedDay]}</Card.Title></Card.Header>
-      <Card.Content>
-        <div class="busy-input-row">
-          <label>
-            Title:
-            <Input type="text" placeholder="Optional" bind:value={newBusyTitle} />
-          </label>
-          {#if !useFloating}
-            <label class="color-input">
-              Color:
-              <input type="color" bind:value={newBusyColor} />
-            </label>
-          {/if}
-        </div>
-
-        <div class="busy-input-row">
-          <label class="toggle-inline">
-            <input type="checkbox" bind:checked={useFloating} />
-            <span>Floating</span>
-          </label>
-
-          {#if !useFloating}
-            <label class="toggle-inline">
-              <input type="checkbox" bind:checked={useDuration} />
-              <span>Use duration</span>
-            </label>
-          {/if}
-        </div>
-
-        <div class="busy-input-row">
-          {#if !useFloating}
-            <label>
-              Start:
-              <Input
-                type="time"
-                value={formatTime(newBusyStart)}
-                onchange={(e) => {
-                  const [h, m] = e.currentTarget.value.split(':').map(Number);
-                  newBusyStart = { hour: h, minute: m };
-                }}
-              />
-            </label>
-          {/if}
-
-          {#if useFloating || useDuration}
-            <label class="duration-input">
-              Duration:
-              <div class="duration-fields">
-                <InputGroup.Root>
-                  <InputGroup.Input
-                    type="number"
-                    min="0"
-                    max="23"
-                    value={newBusyDuration.hour}
-                    onchange={(e) => (newBusyDuration.hour = Number(e.currentTarget.value))}
-                  />
-                  <InputGroup.Addon align="inline-end">
-                    <InputGroup.Text>H</InputGroup.Text>
-                  </InputGroup.Addon>
-                </InputGroup.Root>
-                <InputGroup.Root>
-                  <InputGroup.Input
-                    type="number"
-                    min="0"
-                    max="59"
-                    step="5"
-                    value={newBusyDuration.minute}
-                    onchange={(e) => (newBusyDuration.minute = Number(e.currentTarget.value))}
-                  />
-                  <InputGroup.Addon align="inline-end">
-                    <InputGroup.Text>M</InputGroup.Text>
-                  </InputGroup.Addon>
-                </InputGroup.Root>
-              </div>
-            </label>
-          {:else}
-            <label>
-              End:
-              <Input
-                type="time"
-                value={formatTime(newBusyEnd)}
-                onchange={(e) => {
-                  const [h, m] = e.currentTarget.value.split(':').map(Number);
-                  newBusyEnd = { hour: h, minute: m };
-                }}
-              />
-            </label>
-          {/if}
-
-          <button class="add-btn" onclick={addBusyPeriod}>Add</button>
-        </div>
-      </Card.Content>
-    </Card.Root>
-
-    {#if configStore.currentDayConfig.busyPeriods.length > 0}
-      <div class="busy-list">
-        {#each configStore.currentDayConfig.busyPeriods as period, index (index)}
-          {@const completed = isSelectedDayToday() && isCompleted(index)}
-          {#if editingIndex === index}
-            <div class="busy-item editing">
-              <div class="edit-form">
-                <div class="edit-row">
-                  <label>
-                    Title:
-                    <input type="text" placeholder="Optional" bind:value={editTitle} />
-                  </label>
-                  {#if !editUseFloating}
-                    <label class="color-input">
-                      Color:
-                      <input type="color" bind:value={editColor} />
-                    </label>
-                  {/if}
-                </div>
-                <div class="edit-row">
-                  <label class="toggle-inline">
-                    <input type="checkbox" bind:checked={editUseFloating} />
-                    <span>Floating</span>
-                  </label>
-                  {#if !editUseFloating}
-                    <label class="toggle-inline">
-                      <input type="checkbox" bind:checked={editUseDuration} />
-                      <span>Use duration</span>
-                    </label>
-                  {/if}
-                </div>
-                <div class="edit-row">
-                  {#if !editUseFloating}
-                    <label>
-                      Start:
-                      <input
-                        type="time"
-                        value={formatTime(editStart)}
-                        onchange={(e) => {
-                          const [h, m] = e.currentTarget.value.split(':').map(Number);
-                          editStart = { hour: h, minute: m };
-                        }}
-                      />
-                    </label>
-                  {/if}
-                  {#if editUseFloating || editUseDuration}
-                    <label class="duration-input">
-                      Duration:
-                      <div class="duration-fields">
-                        <input
-                          type="number"
-                          min="0"
-                          max="23"
-                          value={editDuration.hour}
-                          onchange={(e) => (editDuration.hour = Number(e.currentTarget.value))}
-                        />
-                        <span>h</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="59"
-                          step="5"
-                          value={editDuration.minute}
-                          onchange={(e) => (editDuration.minute = Number(e.currentTarget.value))}
-                        />
-                        <span>m</span>
-                      </div>
-                    </label>
-                  {:else}
-                    <label>
-                      End:
-                      <input
-                        type="time"
-                        value={formatTime(editEnd)}
-                        onchange={(e) => {
-                          const [h, m] = e.currentTarget.value.split(':').map(Number);
-                          editEnd = { hour: h, minute: m };
-                        }}
-                      />
-                    </label>
-                  {/if}
-                </div>
-                <div class="edit-actions">
-                  <button class="save-btn" onclick={saveEditing}>Save</button>
-                  <button class="cancel-btn" onclick={cancelEditing}>Cancel</button>
-                </div>
-              </div>
-            </div>
-          {:else}
-            <div
-              class="busy-item"
-              class:completed
-              class:floating={period.floating}
-              style:background-color={!period.floating && !completed && period.color ? period.color : null}
+        <div class="day-selector">
+          {#each DAYS_OF_WEEK as day, index (day)}
+            <Button
+              class="day-btn"
+              variant={configStore.selectedDay === day
+                ? 'default'
+                : index === getCurrentDayIndex()
+                  ? 'secondary'
+                  : 'ghost'}
+              onclick={() => selectDay(day)}
             >
-              <div class="period-info text-foreground">
-                {#if isSelectedDayToday()}
-                  <span class:strikethrough={completed}>
-                    {#if period.title}<strong>{period.title}</strong> &mdash;
-                    {/if}
-                    {#if period.floating}
-                      {formatDuration(period.duration ?? { hour: 0, minute: 0 })} (floating)
-                    {:else}
-                      {formatPeriodTime(period)}
-                    {/if}
-                  </span>
-                {:else}
-                  <span>
-                    {#if period.title}<strong>{period.title}</strong> &mdash;
-                    {/if}
-                    {#if period.floating}
-                      {formatDuration(period.duration ?? { hour: 0, minute: 0 })} (floating)
-                    {:else}
-                      {formatPeriodTime(period)}
-                    {/if}
-                  </span>
-                {/if}
-              </div>
-              <ButtonGroup.Root>
-                <Button variant="secondary" onclick={() => startEditing(index)}>Edit</Button>
-                <Button variant="destructive" onclick={() => removeBusyPeriod(index)}>Remove</Button>
-              </ButtonGroup.Root>
+              {DAY_LABELS[day]}
+            </Button>
+          {/each}
+        </div>
+      </Card.Content>
+    </Card.Root>
+
+    {#if configStore.currentDayConfig.enabled}
+      <Card.Root>
+        <Card.Header>
+          <Card.Action>
+            <label class="toggle">
+              <input
+                type="checkbox"
+                checked={configStore.currentDayConfig.useCustomRange}
+                onchange={(e) => configStore.setUseCustomRange(e.currentTarget.checked)}
+              />
+              <span>Use custom time range</span>
+            </label>
+          </Card.Action>
+        </Card.Header>
+        <Card.Content>
+          {#if configStore.currentDayConfig.useCustomRange}
+            <div class="time-inputs">
+              <label>
+                Start:
+                <Input
+                  type="time"
+                  value={formatTime(configStore.currentDayConfig.startTime)}
+                  onchange={(e) => {
+                    const [h, m] = e.currentTarget.value.split(':').map(Number);
+                    configStore.setStartTime({ hour: h, minute: m });
+                  }}
+                />
+              </label>
+              <label>
+                End:
+                <Input
+                  type="time"
+                  value={formatTime(configStore.currentDayConfig.endTime)}
+                  onchange={(e) => {
+                    const [h, m] = e.currentTarget.value.split(':').map(Number);
+                    configStore.setEndTime({ hour: h, minute: m });
+                  }}
+                />
+              </label>
             </div>
           {/if}
-        {/each}
+        </Card.Content>
+      </Card.Root>
+    {/if}
+
+    {#if configStore.currentDayConfig.enabled}
+      <Card.Root>
+        <Card.Header><Card.Title>Busy Periods for {DAY_LABELS[configStore.selectedDay]}</Card.Title></Card.Header>
+        <Card.Content>
+          <div class="busy-input-row">
+            <label>
+              Title:
+              <Input type="text" placeholder="Optional" bind:value={newBusyTitle} />
+            </label>
+            {#if !useFloating}
+              <label class="color-input">
+                Color:
+                <input type="color" bind:value={newBusyColor} />
+              </label>
+            {/if}
+          </div>
+
+          <div class="busy-input-row">
+            <label class="toggle-inline">
+              <input type="checkbox" bind:checked={useFloating} />
+              <span>Floating</span>
+            </label>
+
+            {#if !useFloating}
+              <label class="toggle-inline">
+                <input type="checkbox" bind:checked={useDuration} />
+                <span>Use duration</span>
+              </label>
+            {/if}
+          </div>
+
+          <div class="busy-input-row">
+            {#if !useFloating}
+              <label>
+                Start:
+                <Input
+                  type="time"
+                  value={formatTime(newBusyStart)}
+                  onchange={(e) => {
+                    const [h, m] = e.currentTarget.value.split(':').map(Number);
+                    newBusyStart = { hour: h, minute: m };
+                  }}
+                />
+              </label>
+            {/if}
+
+            {#if useFloating || useDuration}
+              <label class="duration-input">
+                Duration:
+                <div class="duration-fields">
+                  <InputGroup.Root>
+                    <InputGroup.Input
+                      type="number"
+                      min="0"
+                      max="23"
+                      value={newBusyDuration.hour}
+                      onchange={(e) => (newBusyDuration.hour = Number(e.currentTarget.value))}
+                    />
+                    <InputGroup.Addon align="inline-end">
+                      <InputGroup.Text>H</InputGroup.Text>
+                    </InputGroup.Addon>
+                  </InputGroup.Root>
+                  <InputGroup.Root>
+                    <InputGroup.Input
+                      type="number"
+                      min="0"
+                      max="59"
+                      step="5"
+                      value={newBusyDuration.minute}
+                      onchange={(e) => (newBusyDuration.minute = Number(e.currentTarget.value))}
+                    />
+                    <InputGroup.Addon align="inline-end">
+                      <InputGroup.Text>M</InputGroup.Text>
+                    </InputGroup.Addon>
+                  </InputGroup.Root>
+                </div>
+              </label>
+            {:else}
+              <label>
+                End:
+                <Input
+                  type="time"
+                  value={formatTime(newBusyEnd)}
+                  onchange={(e) => {
+                    const [h, m] = e.currentTarget.value.split(':').map(Number);
+                    newBusyEnd = { hour: h, minute: m };
+                  }}
+                />
+              </label>
+            {/if}
+
+            <button class="add-btn" onclick={addBusyPeriod}>Add</button>
+          </div>
+        </Card.Content>
+      </Card.Root>
+
+      {#if configStore.currentDayConfig.busyPeriods.length > 0}
+        <div class="busy-list">
+          {#each configStore.currentDayConfig.busyPeriods as period, index (index)}
+            {@const completed = isSelectedDayToday() && isCompleted(index)}
+            {#if editingIndex === index}
+              <div class="busy-item editing">
+                <div class="edit-form">
+                  <div class="edit-row">
+                    <label>
+                      Title:
+                      <input type="text" placeholder="Optional" bind:value={editTitle} />
+                    </label>
+                    {#if !editUseFloating}
+                      <label class="color-input">
+                        Color:
+                        <input type="color" bind:value={editColor} />
+                      </label>
+                    {/if}
+                  </div>
+                  <div class="edit-row">
+                    <label class="toggle-inline">
+                      <input type="checkbox" bind:checked={editUseFloating} />
+                      <span>Floating</span>
+                    </label>
+                    {#if !editUseFloating}
+                      <label class="toggle-inline">
+                        <input type="checkbox" bind:checked={editUseDuration} />
+                        <span>Use duration</span>
+                      </label>
+                    {/if}
+                  </div>
+                  <div class="edit-row">
+                    {#if !editUseFloating}
+                      <label>
+                        Start:
+                        <input
+                          type="time"
+                          value={formatTime(editStart)}
+                          onchange={(e) => {
+                            const [h, m] = e.currentTarget.value.split(':').map(Number);
+                            editStart = { hour: h, minute: m };
+                          }}
+                        />
+                      </label>
+                    {/if}
+                    {#if editUseFloating || editUseDuration}
+                      <label class="duration-input">
+                        Duration:
+                        <div class="duration-fields">
+                          <input
+                            type="number"
+                            min="0"
+                            max="23"
+                            value={editDuration.hour}
+                            onchange={(e) => (editDuration.hour = Number(e.currentTarget.value))}
+                          />
+                          <span>h</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="59"
+                            step="5"
+                            value={editDuration.minute}
+                            onchange={(e) => (editDuration.minute = Number(e.currentTarget.value))}
+                          />
+                          <span>m</span>
+                        </div>
+                      </label>
+                    {:else}
+                      <label>
+                        End:
+                        <input
+                          type="time"
+                          value={formatTime(editEnd)}
+                          onchange={(e) => {
+                            const [h, m] = e.currentTarget.value.split(':').map(Number);
+                            editEnd = { hour: h, minute: m };
+                          }}
+                        />
+                      </label>
+                    {/if}
+                  </div>
+                  <div class="edit-actions">
+                    <button class="save-btn" onclick={saveEditing}>Save</button>
+                    <button class="cancel-btn" onclick={cancelEditing}>Cancel</button>
+                  </div>
+                </div>
+              </div>
+            {:else}
+              <div
+                class="busy-item"
+                class:completed
+                class:floating={period.floating}
+                style:background-color={!period.floating && !completed && period.color ? period.color : null}
+              >
+                <div class="period-info text-foreground">
+                  {#if isSelectedDayToday()}
+                    <span class:strikethrough={completed}>
+                      {#if period.title}<strong>{period.title}</strong> &mdash;
+                      {/if}
+                      {#if period.floating}
+                        {formatDuration(period.duration ?? { hour: 0, minute: 0 })} (floating)
+                      {:else}
+                        {formatPeriodTime(period)}
+                      {/if}
+                    </span>
+                  {:else}
+                    <span>
+                      {#if period.title}<strong>{period.title}</strong> &mdash;
+                      {/if}
+                      {#if period.floating}
+                        {formatDuration(period.duration ?? { hour: 0, minute: 0 })} (floating)
+                      {:else}
+                        {formatPeriodTime(period)}
+                      {/if}
+                    </span>
+                  {/if}
+                </div>
+                <ButtonGroup.Root>
+                  <Button variant="secondary" onclick={() => startEditing(index)}>Edit</Button>
+                  <Button variant="destructive" onclick={() => removeBusyPeriod(index)}>Remove</Button>
+                </ButtonGroup.Root>
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {/if}
+    {:else}
+      <div class="disabled-message">
+        <p>{DAY_LABELS[configStore.selectedDay]} is disabled. Enable it to configure time ranges and busy periods.</p>
       </div>
     {/if}
-  {:else}
-    <div class="disabled-message">
-      <p>{DAY_LABELS[configStore.selectedDay]} is disabled. Enable it to configure time ranges and busy periods.</p>
-    </div>
   {/if}
 </main>
 
@@ -763,7 +769,8 @@
     background: rgba(255, 255, 255, 0.2);
   }
 
-  .disabled-message {
+  .disabled-message,
+  .loading-message {
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(10px);
     border-radius: 12px;
@@ -773,7 +780,8 @@
     text-align: center;
   }
 
-  .disabled-message p {
+  .disabled-message p,
+  .loading-message p {
     margin: 0;
     color: #a0a0a0;
     font-size: 1.1rem;

@@ -74,7 +74,8 @@
     "workbox-window": "^7.4.0"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.9.1",
+    "@electric-sql/pglite": "^0.3.15",
+    "@tauri-apps/api": "^2.10.1",
     "mode-watcher": "^1.1.0"
   }
 }

@@ -1,7 +1,5 @@
 import { browser } from '$app/environment';
-
-const STORAGE_KEY = 'daybar-config';
-const COMPLETIONS_STORAGE_KEY = 'daybar-completions';
+import { getDb } from './db';
 
 export type Time = {
   hour: number;
@@ -21,7 +19,6 @@ export type Completion = {
   completedAt: Time;
 };
 
-// Completions are stored by date string (YYYY-MM-DD) -> day of week -> period index
 export type DailyCompletions = Record<number, Completion>;
 export type DateCompletions = Record<string, DailyCompletions>;
 
@@ -98,70 +95,123 @@ function createDefaultWeekConfig(): WeekConfig {
   };
 }
 
-function loadFromStorage(): WeekConfig | null {
-  if (!browser) return null;
-
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as WeekConfig;
-    }
-  } catch (e) {
-    console.error('Failed to load config from localStorage:', e);
-  }
-  return null;
-}
-
-function saveToStorage(config: WeekConfig): void {
-  if (!browser) return;
-
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-  } catch (e) {
-    console.error('Failed to save config to localStorage:', e);
-  }
-}
-
-function loadCompletionsFromStorage(): DateCompletions {
-  if (!browser) return {};
-
-  try {
-    const stored = localStorage.getItem(COMPLETIONS_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored) as DateCompletions;
-    }
-  } catch (e) {
-    console.error('Failed to load completions from localStorage:', e);
-  }
-  return {};
-}
-
-function saveCompletionsToStorage(completions: DateCompletions): void {
-  if (!browser) return;
-
-  try {
-    localStorage.setItem(COMPLETIONS_STORAGE_KEY, JSON.stringify(completions));
-  } catch (e) {
-    console.error('Failed to save completions to localStorage:', e);
-  }
-}
-
 function getCurrentDayOfWeek(): DayOfWeek {
   return DAYS_OF_WEEK[new Date().getDay()];
 }
+
+type DayConfigRow = {
+  day_of_week: string;
+  enabled: boolean;
+  start_hour: number;
+  start_minute: number;
+  end_hour: number;
+  end_minute: number;
+  use_custom_range: boolean;
+};
+
+type BusyPeriodRow = {
+  id: number;
+  day_of_week: string;
+  title: string | null;
+  start_hour: number | null;
+  start_minute: number | null;
+  end_hour: number | null;
+  end_minute: number | null;
+  duration_hour: number | null;
+  duration_minute: number | null;
+  floating: boolean;
+  color: string | null;
+  sort_order: number;
+};
+
+type CompletionRow = {
+  date: string;
+  period_index: number;
+  completed_at_hour: number;
+  completed_at_minute: number;
+};
 
 class ConfigStore {
   weekConfig = $state<WeekConfig>(createDefaultWeekConfig());
   completions = $state<DateCompletions>({});
   selectedDay = $state<DayOfWeek>(getCurrentDayOfWeek());
+  ready = $state<boolean>(false);
+  #initPromise: Promise<void> | null = null;
 
   constructor() {
     if (browser) {
-      const stored = loadFromStorage();
-      if (stored) {
-        this.weekConfig = stored;
+      this.#initPromise = this.init();
+    }
+  }
+
+  async init(): Promise<void> {
+    if (!browser) return;
+
+    try {
+      const db = await getDb();
+
+      // Load day configs
+      const dayConfigResult = await db.query<DayConfigRow>(`SELECT * FROM day_config`);
+
+      for (const row of dayConfigResult.rows) {
+        const day = row.day_of_week as DayOfWeek;
+        this.weekConfig[day] = {
+          enabled: row.enabled,
+          startTime: { hour: row.start_hour, minute: row.start_minute },
+          endTime: { hour: row.end_hour, minute: row.end_minute },
+          useCustomRange: row.use_custom_range,
+          busyPeriods: [],
+        };
       }
-      this.completions = loadCompletionsFromStorage();
+
+      // Load busy periods
+      const busyPeriodsResult = await db.query<BusyPeriodRow>(
+        `SELECT * FROM busy_periods ORDER BY day_of_week, sort_order`,
+      );
+
+      for (const row of busyPeriodsResult.rows) {
+        const day = row.day_of_week as DayOfWeek;
+        const period: BusyPeriod = {
+          floating: row.floating,
+        };
+
+        if (row.title) period.title = row.title;
+        if (row.start_hour !== null && row.start_minute !== null) {
+          period.start = { hour: row.start_hour, minute: row.start_minute };
+        }
+        if (row.end_hour !== null && row.end_minute !== null) {
+          period.end = { hour: row.end_hour, minute: row.end_minute };
+        }
+        if (row.duration_hour !== null && row.duration_minute !== null) {
+          period.duration = { hour: row.duration_hour, minute: row.duration_minute };
+        }
+        if (row.color) period.color = row.color;
+
+        this.weekConfig[day].busyPeriods.push(period);
+      }
+
+      // Load completions
+      const completionsResult = await db.query<CompletionRow>(`SELECT * FROM completions`);
+
+      for (const row of completionsResult.rows) {
+        if (!this.completions[row.date]) {
+          this.completions[row.date] = {};
+        }
+        this.completions[row.date][row.period_index] = {
+          completedAt: { hour: row.completed_at_hour, minute: row.completed_at_minute },
+        };
+      }
+
+      this.ready = true;
+    } catch (e) {
+      console.error('Failed to initialize config store:', e);
+      this.ready = true; // Still mark ready so UI doesn't hang
+    }
+  }
+
+  async waitForReady(): Promise<void> {
+    if (this.#initPromise) {
+      await this.#initPromise;
     }
   }
 
@@ -193,47 +243,47 @@ class ConfigStore {
     return this.completions[dateStr]?.[periodIndex]?.completedAt;
   }
 
-  updateDayConfig(day: DayOfWeek, updates: Partial<DayConfig>): void {
+  async updateDayConfig(day: DayOfWeek, updates: Partial<DayConfig>): Promise<void> {
     this.weekConfig[day] = { ...this.weekConfig[day], ...updates };
-    this.save();
+    await this.saveDayConfig(day);
   }
 
-  setStartTime(time: Time): void {
+  async setStartTime(time: Time): Promise<void> {
     this.weekConfig[this.selectedDay].startTime = time;
-    this.save();
+    await this.saveDayConfig(this.selectedDay);
   }
 
-  setEndTime(time: Time): void {
+  async setEndTime(time: Time): Promise<void> {
     this.weekConfig[this.selectedDay].endTime = time;
-    this.save();
+    await this.saveDayConfig(this.selectedDay);
   }
 
-  setUseCustomRange(value: boolean): void {
+  async setUseCustomRange(value: boolean): Promise<void> {
     this.weekConfig[this.selectedDay].useCustomRange = value;
-    this.save();
+    await this.saveDayConfig(this.selectedDay);
   }
 
-  setEnabled(value: boolean): void {
+  async setEnabled(value: boolean): Promise<void> {
     this.weekConfig[this.selectedDay].enabled = value;
-    this.save();
+    await this.saveDayConfig(this.selectedDay);
   }
 
-  addBusyPeriod(period: BusyPeriod): void {
+  async addBusyPeriod(period: BusyPeriod): Promise<void> {
     this.weekConfig[this.selectedDay].busyPeriods.push(period);
-    this.save();
+    await this.saveBusyPeriods(this.selectedDay);
   }
 
-  updateBusyPeriod(index: number, period: BusyPeriod): void {
+  async updateBusyPeriod(index: number, period: BusyPeriod): Promise<void> {
     this.weekConfig[this.selectedDay].busyPeriods[index] = period;
-    this.save();
+    await this.saveBusyPeriods(this.selectedDay);
   }
 
-  removeBusyPeriod(index: number): void {
+  async removeBusyPeriod(index: number): Promise<void> {
     this.weekConfig[this.selectedDay].busyPeriods.splice(index, 1);
-    this.save();
+    await this.saveBusyPeriods(this.selectedDay);
   }
 
-  toggleBusyPeriodCompleted(periodIndex: number, currentTime: Time, date: Date = new Date()): void {
+  async toggleBusyPeriodCompleted(periodIndex: number, currentTime: Time, date: Date = new Date()): Promise<void> {
     const dateStr = getDateString(date);
     const dayOfWeek = DAYS_OF_WEEK[date.getDay()];
     const period = this.weekConfig[dayOfWeek].busyPeriods[periodIndex];
@@ -242,16 +292,18 @@ class ConfigStore {
       this.completions[dateStr] = {};
     }
 
+    const db = await getDb();
+
     if (this.completions[dateStr][periodIndex]) {
       // Uncomplete - remove the completion
       delete this.completions[dateStr][periodIndex];
-      // Clean up empty date entries
       if (Object.keys(this.completions[dateStr]).length === 0) {
         delete this.completions[dateStr];
       }
+
+      await db.query(`DELETE FROM completions WHERE date = $1 AND period_index = $2`, [dateStr, periodIndex]);
     } else {
       // Complete - add the completion with time
-      // For floating periods, use end time (current time + duration)
       let completionTime = currentTime;
       if (period?.floating && period.duration) {
         completionTime = addTimes(currentTime, period.duration);
@@ -259,28 +311,109 @@ class ConfigStore {
       this.completions[dateStr][periodIndex] = {
         completedAt: completionTime,
       };
-    }
 
-    this.saveCompletions();
+      await db.query(
+        `INSERT INTO completions (date, period_index, completed_at_hour, completed_at_minute)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (date, period_index) DO UPDATE SET
+           completed_at_hour = EXCLUDED.completed_at_hour,
+           completed_at_minute = EXCLUDED.completed_at_minute`,
+        [dateStr, periodIndex, completionTime.hour, completionTime.minute],
+      );
+    }
   }
 
   selectDay(day: DayOfWeek): void {
     this.selectedDay = day;
   }
 
-  save(): void {
-    saveToStorage(this.weekConfig);
+  private async saveDayConfig(day: DayOfWeek): Promise<void> {
+    if (!browser) return;
+
+    const config = this.weekConfig[day];
+    const db = await getDb();
+
+    await db.query(
+      `UPDATE day_config SET
+        enabled = $1,
+        start_hour = $2,
+        start_minute = $3,
+        end_hour = $4,
+        end_minute = $5,
+        use_custom_range = $6
+      WHERE day_of_week = $7`,
+      [
+        config.enabled,
+        config.startTime.hour,
+        config.startTime.minute,
+        config.endTime.hour,
+        config.endTime.minute,
+        config.useCustomRange,
+        day,
+      ],
+    );
   }
 
-  saveCompletions(): void {
-    saveCompletionsToStorage(this.completions);
+  private async saveBusyPeriods(day: DayOfWeek): Promise<void> {
+    if (!browser) return;
+
+    const db = await getDb();
+    const periods = this.weekConfig[day].busyPeriods;
+
+    // Delete existing periods for this day
+    await db.query(`DELETE FROM busy_periods WHERE day_of_week = $1`, [day]);
+
+    // Insert all periods with their sort order
+    for (let i = 0; i < periods.length; i++) {
+      const period = periods[i];
+      await db.query(
+        `INSERT INTO busy_periods (
+          day_of_week, title, start_hour, start_minute, end_hour, end_minute,
+          duration_hour, duration_minute, floating, color, sort_order
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [
+          day,
+          period.title ?? null,
+          period.start?.hour ?? null,
+          period.start?.minute ?? null,
+          period.end?.hour ?? null,
+          period.end?.minute ?? null,
+          period.duration?.hour ?? null,
+          period.duration?.minute ?? null,
+          period.floating ?? false,
+          period.color ?? null,
+          i,
+        ],
+      );
+    }
   }
 
-  reset(): void {
+  async reset(): Promise<void> {
     this.weekConfig = createDefaultWeekConfig();
     this.completions = {};
-    this.save();
-    this.saveCompletions();
+
+    if (!browser) return;
+
+    const db = await getDb();
+
+    // Reset day configs to defaults
+    for (const day of DAYS_OF_WEEK) {
+      await db.query(
+        `UPDATE day_config SET
+          enabled = true,
+          start_hour = 6,
+          start_minute = 0,
+          end_hour = 22,
+          end_minute = 0,
+          use_custom_range = false
+        WHERE day_of_week = $1`,
+        [day],
+      );
+    }
+
+    // Delete all busy periods and completions
+    await db.query(`DELETE FROM busy_periods`);
+    await db.query(`DELETE FROM completions`);
   }
 }
 
