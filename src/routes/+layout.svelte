@@ -8,7 +8,16 @@
   let { children } = $props();
 </script>
 
-<svelte:head><link rel="icon" href={favicon} /></svelte:head>
+<svelte:head>
+  <title>DayBar</title>
+  <meta name="description" content="A simple day planner app to help toddlers visualize time" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="og:title" content="DayBar" />
+  <meta name="og:description" content="A simple day planner app to help toddlers visualize time" />
+  <meta name="og:image" content="https://daybar.exp.apparentvisuals.dev/icon-192.png" />
+  <meta name="og:url" content="https://daybar.exp.apparentvisuals.dev" />
+  <link rel="icon" href={favicon} />
+</svelte:head>
 
 <ModeWatcher />
 {@render children()}

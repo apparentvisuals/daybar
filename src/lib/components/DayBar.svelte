@@ -202,7 +202,7 @@
   });
 
   function formatHour(hour: number) {
-    return `${hour.toString().padStart(2, '0')}:00`;
+    return `${hour.toString().padStart(2, '0')}`;
   }
 </script>
 
@@ -213,9 +213,7 @@
   <div class="bar-wrapper">
     <div class="timeline-bar">
       <!-- Past time (dashed) -->
-      <div class="past-section" style="width: {progress}%;">
-        <!-- <div class="dashed-overlay"></div> -->
-      </div>
+      <div class="past-section" style="width: {progress}%;"></div>
 
       <!-- Future time (solid) -->
       <div class="future-section" style="width: {100 - progress}%; left: {progress}%;"></div>
